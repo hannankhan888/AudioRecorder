@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-""" This is a simple audio recorder."""
+"""This is a simple audio recorder that uses PyAudio and wave to record .wav files."""
 
 __author__ = "Hannan Khan"
 __copyright__ = "Copyright 2020, Audio Recorder"
@@ -11,17 +11,28 @@ __version__ = "1.0"
 __maintainer__ = "Hannan Khan"
 __email__ = "hannankhan888@gmail.com"
 
-import sys, os, threading, time, queue
+import os
+import sys
+import threading
+import time
+import wave
+
+import pyaudio
 from PyQt5 import QtGui, QtWidgets, QtCore
-from PyQt5.QtWidgets import QMainWindow, QApplication, QGraphicsBlurEffect
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QMainWindow, QApplication, QGraphicsBlurEffect
 from win10toast import ToastNotifier
-import sounddevice, soundfile, numpy
+
 from dynamicLabels import ColorChangingLabel, ImageChangingLabel, CustomButton
 from framelessDialog import FramelessDialog
 
+CHUNK = 1024
+SAMPLE_FORMAT = pyaudio.paInt16
+CHANNELS = 0
+FPS = 44100
 
-# function needed to use pyinstaller properly:
+
+# function needed to use PyInstaller properly:
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
@@ -33,6 +44,12 @@ def resource_path(relative_path):
 
 
 class AudioRecorder(QMainWindow):
+    """This class implements a minimalist AudioRecorder.
+    Functions of the recorder include starting recording, pausing, and stopping (same
+    as saving).
+    Each time a recording is started, a separate timer thread and recording thread are
+    created for that particular recording. When stop is pressed, these threads terminate."""
+
     def __init__(self, screen_width: int, screen_height: int):
         # Set up the window's attributes.
         super(AudioRecorder, self).__init__()
@@ -47,8 +64,7 @@ class AudioRecorder(QMainWindow):
         # Set this window to not have the OS window frame.
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setWindowTitle("Audio Recorder")
-        self.setWindowIcon(QtGui.QIcon(resource_path("icon.png")))
-
+        self.setWindowIcon(QtGui.QIcon(resource_path("images/icon.ico")))
 
         # Set up the variables.
         self.app_name = "Audio Recorder"
@@ -63,13 +79,12 @@ class AudioRecorder(QMainWindow):
         self.mousePressPos = None
         self.mouseMovePos = None
         self.threads: [threading.Thread] = []
-        self.q = queue.Queue()
-        self.audio_file = None
-        self.input_stream = None
         self.total_time = 0.0
         self.toaster = ToastNotifier()
         self.timer_thread = None
         self.recording_thread = None
+        self.stream = None
+        self.frames = []
 
         self._init_colors()
         self._init_default_devices()
@@ -93,6 +108,7 @@ class AudioRecorder(QMainWindow):
 
         self._init_window_frame()
         self._init_bottom_frame()
+        self._init_popup_menu()
 
         self.main_frame.setLayout(self.main_frame_layout)
 
@@ -122,12 +138,6 @@ class AudioRecorder(QMainWindow):
 
     def contextMenuEvent(self, event: QtGui.QContextMenuEvent) -> None:
         if self.window_frame.underMouse():
-            self.pop_up_menu = QtWidgets.QMenu()
-            self.always_on_top_action = QtWidgets.QAction("&Always on top", self)
-            self.always_on_top_action.setCheckable(True)
-            self.always_on_top_action.setChecked(self.always_on_top)
-            self.always_on_top_action.triggered.connect(self.update_always_on_top)
-            self.pop_up_menu.addAction(self.always_on_top_action)
             self.pop_up_menu.exec_(self.mapToGlobal(event.pos()))
 
     def _init_colors(self):
@@ -148,13 +158,19 @@ class AudioRecorder(QMainWindow):
         self.highlight_color.setRgb(111, 117, 135)
 
     def _init_default_devices(self):
-        """Gets the dictionaries of the default input and output devices."""
-        self.input_device_num = sounddevice.default.device[0]
-        self.output_device_num = sounddevice.default.device[1]
-        self.input_device_dict = sounddevice.query_devices(device=self.input_device_num)
-        self.output_device_dict = sounddevice.query_devices(device=self.output_device_num)
-        self.default_sample_rate = self.input_device_dict["default_samplerate"]
-        self.input_channels = self.input_device_dict["max_input_channels"]
+        """Gets the dictionaries of the default input and output devices, and set the
+        default values for them."""
+
+        self.p = pyaudio.PyAudio()
+        self.input_device_dict = pyaudio.PyAudio.get_default_input_device_info(self.p)
+        self.input_device_idx = self.input_device_dict['index']
+        self.input_device_name = self.input_device_dict["name"]
+        self.input_channels = self.input_device_dict['maxInputChannels']
+        self.default_sample_rate = self.input_device_dict['defaultSampleRate']
+
+        self.output_device_dict = pyaudio.PyAudio.get_default_output_device_info(self.p)
+        self.output_device_num = self.output_device_dict['index']
+        self.output_device_name = self.output_device_dict["name"]
 
     def _init_window_frame(self):
         self.window_frame = QtWidgets.QFrame()
@@ -238,9 +254,15 @@ class AudioRecorder(QMainWindow):
         self.buttons_frame_layout.setContentsMargins(0, 0, 0, 0)
         self.buttons_frame_layout.setAlignment(Qt.AlignCenter)
 
-        self.record_button_label = ImageChangingLabel(resource_path("mic_1.png"), resource_path("mic_2.png"), self.start_recording)
-        self.pause_button_label = ImageChangingLabel(resource_path("pause_1.png"), resource_path("pause_2.png"), self.pause_recording)
-        self.stop_button_label = ImageChangingLabel(resource_path("stop_1.png"), resource_path("stop_2.png"), self.stop_recording)
+        self.record_button_label = ImageChangingLabel(resource_path("images/mic_1.png"), resource_path(
+            "images/mic_2.png"),
+                                                      self.start_recording)
+        self.pause_button_label = ImageChangingLabel(resource_path("images/pause_1.png"), resource_path(
+            "images/pause_2.png"),
+                                                     self.pause_recording)
+        self.stop_button_label = ImageChangingLabel(resource_path("images/stop_1.png"), resource_path(
+            "images/stop_2.png"),
+                                                    self.stop_recording)
         self.buttons_frame_layout.addWidget(self.record_button_label)
         self.buttons_frame_layout.addWidget(self.pause_button_label)
         self.buttons_frame_layout.addWidget(self.stop_button_label)
@@ -251,7 +273,9 @@ class AudioRecorder(QMainWindow):
         self.settings_frame_layout = QtWidgets.QHBoxLayout()
         self.settings_frame_layout.setAlignment(Qt.AlignRight | Qt.AlignBottom)
         self.settings_frame_layout.setContentsMargins(0, 0, 0, 0)
-        self.settings_label = ImageChangingLabel(resource_path("settings_1.png"), resource_path("settings_2.png"), self.settings, 35, 35)
+        self.settings_label = ImageChangingLabel(resource_path("images/settings_1.png"), resource_path(
+            "images/settings_2.png"),
+                                                 self.settings, 35, 35)
         self.settings_frame_layout.addWidget(self.settings_label)
         self.settings_frame.setLayout(self.settings_frame_layout)
 
@@ -261,8 +285,18 @@ class AudioRecorder(QMainWindow):
         self.bottom_frame.setLayout(self.bottom_frame_layout)
         self.main_frame_layout.addWidget(self.bottom_frame)
 
+    def _init_popup_menu(self):
+        self.pop_up_menu = QtWidgets.QMenu()
+        self.always_on_top_action = QtWidgets.QAction("&Always on top", self)
+        self.always_on_top_action.setCheckable(True)
+        self.always_on_top_action.setChecked(self.always_on_top)
+        self.always_on_top_action.triggered.connect(self.update_always_on_top)
+        self.pop_up_menu.addAction(self.always_on_top_action)
+
     def set_current_recording_text(self, text: str = "", recording: bool = False, paused: bool = False,
                                    stopped: bool = False):
+        """Sets the current recording text based on which variable is activated."""
+
         if not text:
             text = self.filename
         if recording:
@@ -288,60 +322,95 @@ class AudioRecorder(QMainWindow):
             self.show()
 
     def _start_timer_thread(self):
+        """This function starts a timer thread each time a recording starts. Each recording
+        has a timer thread and a recording thread. When paused the timer thread will
+        emulate sleep by sleeping for .2 seconds, and updating the current and total
+        recording time."""
+
         start_time = time.time()
         self.timer_thread = threading.Thread(target=self.start_timer, args=(start_time,))
-        self.timer_thread.daemon = True
+        self.timer_thread.setDaemon(True)
+        self.timer_thread.setName("Timer Thread")
         self.timer_thread.start()
         self.threads.append(self.timer_thread)
 
     def start_timer(self, start_time):
+        """Timer thread runs this function. When self.stopped is True, this thread will
+        return and terminate."""
+
         diff_time = 0.0
         self.total_time = 0.0
         while True:
-            if self.recording and not self.paused:
-                time.sleep(1)
-                curr_time = time.time()
-                diff_time = curr_time - start_time
-                diff_time = diff_time + self.total_time
-                self.set_current_time_text(diff_time)
-            elif self.stopped:
-                self.set_current_time_text(0)
-                break
-            else:
+            if self.paused:
                 start_time = time.time()
                 self.total_time = diff_time
+                time.sleep(.2)
+            if self.recording:
+                time.sleep(1)
+                diff_time = time.time() - start_time + self.total_time
+                self.set_current_time_text(diff_time)
+            if self.stopped:
+                self.set_current_time_text(0)
+                return
 
     def set_current_time_text(self, diff_time: float):
+        """Sets the current time text with correct time conversion."""
+
         self.current_time_label.setText(time.strftime("%H:%M:%S", time.gmtime(diff_time)))
 
-    def callback(self, indata: numpy.ndarray, frames: int, time, status) -> None:
-        if self.recording:
-            self.q.put(indata.copy())
-
     def _start_recording_thread(self):
+        """This function will create and start the recording thread. One recording thread
+        is created for each file that is recorded."""
+
         self.recording_thread = threading.Thread(target=self.open_continue_recording)
-        self.recording_thread.daemon = True
+        self.recording_thread.setDaemon(True)
+        self.recording_thread.setName("Recording Thread")
         self.threads.append(self.recording_thread)
         self.recording_thread.start()
 
     def open_continue_recording(self):
-        with soundfile.SoundFile(self.filepath, mode='x', samplerate=int(self.default_sample_rate),
-                                 channels=self.input_channels, subtype="PCM_24", format="WAV") as self.audio_file:
-            with sounddevice.InputStream(samplerate=self.default_sample_rate, device=self.input_device_num,
-                                         channels=self.input_channels, callback=self.callback):
-                while True:
-                    if self.recording:
-                        self.audio_file.write(self.q.get())
-                    elif self.paused:
-                        pass
-                    elif self.stopped:
-                        break
+        """This function actually does the recording. It will open a stream and enter a
+        while True loop. If paused, it will stop the stream and sleep for .2 seconds. If
+        recording, it will check to see if the stream is started, and then record. When
+        stopping, the loop will stop the stream, close it, and return, causing the associated
+        recording thread to terminate."""
+
+        self.stream = self.p.open(format=SAMPLE_FORMAT, channels=self.input_channels,
+                                  rate=FPS, frames_per_buffer=CHUNK, input=True)
+        while True:
+            if self.recording:
+                if self.stream.is_stopped():
+                    self.stream.start_stream()
+                data = self.stream.read(1024)
+                self.frames.append(data)
+            elif self.paused:
+                if not self.stream.is_stopped():
+                    self.stream.stop_stream()
+                else:
+                    time.sleep(.2)
+            elif self.stopped:
+                self.stream.stop_stream()
+                self.stream.close()
+                return
 
     def start_recording(self):
-        # TODO: add error message to remind to stop, if we are already recording something.
-        # TODO: reset the filename and filepath vars each time we start recording.
-        if not self.recording:
-            self.filepath = QtWidgets.QFileDialog.getSaveFileName(self, "Save Audio As", os.getcwd(), "Audio Files (*.wav)")[0]
+        """This function is called when you press the record button. It will check for user
+        errors, and provides error messages, as well as a file selection dialog for getting
+        a new file's name. When the recording is started, it will notify via the win10Toast
+        module."""
+
+        if self.recording:
+            warning_dialog = FramelessDialog(self, "A recording is already underway.", self.normal_bg,
+                                             self.highlight_bg, self.normal_color, self.highlight_color, "Error",
+                                             self.current_font)
+            self.main_frame_blur.setEnabled(True)
+            warning_dialog.exec_()
+            self.main_frame_blur.setEnabled(False)
+        elif not self.recording:
+            self.filename = ""
+            self.filepath = ""
+            self.filepath = QtWidgets.QFileDialog.getSaveFileName(self, "Save Audio As",
+                                                                  os.getcwd(), "Audio Files (*.wav)")[0]
             if self.filepath:
                 self.filename = os.path.basename(self.filepath)
                 self.record_button_label.invert_active_state()
@@ -351,14 +420,15 @@ class AudioRecorder(QMainWindow):
                 self.set_current_recording_text(recording=True)
                 self._start_timer_thread()
                 self._start_recording_thread()
-                self.toaster.show_toast(self.app_name, f"Recording Started.\n{self.filename} Created.", None, 3, True)
-        elif self.recording:
-            warning_dialog = FramelessDialog(self, "A recording is already underway.", self.normal_bg, self.highlight_bg, self.normal_color, self.highlight_color, "Error", self.current_font)
-            self.main_frame_blur.setEnabled(True)
-            warning_dialog.exec_()
-            self.main_frame_blur.setEnabled(False)
+                self.toaster.show_toast(self.app_name, f"Recording Started:\n{self.filename} created.",
+                                        resource_path("images/icon.ico"), 3, True)
 
     def pause_recording(self):
+        """This function is called when User clicks the pause button. If paused, it will set
+        variables so that the currently running threads may resume again. Otherwise, it
+        pause the threads (again, by only setting the vars and letting the threads take
+        care of the rest).."""
+
         if self.paused:
             self.pause_button_label.invert_active_state()
             self.recording = True
@@ -366,40 +436,65 @@ class AudioRecorder(QMainWindow):
             self.record_button_label.invert_active_state()
             self.set_current_recording_text(recording=True)
         elif self.recording:
-            self.pause_button_label.invert_active_state()
             self.recording = False
-            self.record_button_label.invert_active_state()
             self.paused = True
+            self.pause_button_label.invert_active_state()
+            self.record_button_label.invert_active_state()
             self.set_current_recording_text(paused=True)
         else:
-            warning_dialog = FramelessDialog(self, "You must first start a\nrecording to be able to pause.", self.normal_bg, self.highlight_bg, self.normal_color, self.highlight_color, "Error", self.current_font)
+            warning_dialog = FramelessDialog(self, "You must first start a\nrecording to be able to pause.",
+                                             self.normal_bg, self.highlight_bg, self.normal_color, self.highlight_color,
+                                             "Error", self.current_font)
             self.main_frame_blur.setEnabled(True)
             warning_dialog.exec_()
             self.main_frame_blur.setEnabled(False)
 
     def stop_recording(self):
+        """This function is called when you stop recording. It will check that you have a
+        recording that you have at least started already. Otherwise, it will save the recording
+        via wave, an in-built python module for wav files. This function will also take care of
+        resetting the variables for a new recording to take place."""
+
         self.stopped = True
-        if self.recording:
-            self.toaster.show_toast(self.app_name, f"Recording Stopped.\n{self.filename} Saved.", None, 3, True)
-            self.record_button_label.invert_active_state()
+        if not self.recording and not self.paused:
+            warning_dialog = FramelessDialog(self, "Please start recording first.", self.normal_bg, self.highlight_bg,
+                                             self.normal_color, self.highlight_color, "Error", self.current_font)
+            self.main_frame_blur.setEnabled(True)
+            warning_dialog.exec_()
+            self.main_frame_blur.setEnabled(False)
+        else:
+            if self.recording:
+                self.record_button_label.invert_active_state()
+            elif self.paused:
+                self.pause_button_label.invert_active_state()
+            self.recording = False
+            self.paused = False
+            with wave.open(self.filename, "wb") as wf:
+                wf.setnchannels(self.input_channels)
+                wf.setsampwidth(self.p.get_sample_size(SAMPLE_FORMAT))
+                wf.setframerate(FPS)
+                wf.writeframes(b''.join(self.frames))
+                self.frames.clear()
+            self.toaster.show_toast(self.app_name, f"Recording Stopped:\n{self.filename} saved.",
+                                    resource_path("images/icon.ico"), 3, True)
             self.set_current_recording_text(stopped=True)
-        elif self.paused:
-            self.toaster.show_toast(self.app_name, f"Recording Stopped.\n{self.filename} Saved.", None, 3, True)
-            self.pause_button_label.invert_active_state()
-            self.set_current_recording_text(stopped=True)
-        self.recording = False
-        self.paused = False
-        if self.audio_file:
-            self.audio_file.close()
-        self.audio_file = None
-        self.total_time = 0.0
-        self.filepath = ""
-        self.filename = ""
-        self.set_current_time_text(0)
+            self.total_time = 0.0
+            self.filepath = ""
+            self.filename = ""
+            self.set_current_time_text(0)
+        print("Self.threads before closing", end="")
+        print(self.threads)
+        for thread in self.threads:
+            if thread.is_alive():
+                print("Closing: " + str(thread.getName()))
+                thread.join(.5)
+        self.threads.clear()
 
     def settings(self):
+        """This function takes care of the settings dialog."""
+
         self.settings_label.invert_active_state()
-        io_text = "Input:\n%s\nOutput:\n%s\n" % (self.input_device_dict["name"], self.output_device_dict["name"])
+        io_text = "Input:\n%s\nOutput:\n%s\n" % (self.input_device_name, self.output_device_name)
         settings_dialog = FramelessDialog(self, io_text, self.normal_bg, self.highlight_bg,
                                           self.normal_color, self.highlight_color, "Settings", self.current_font)
         self.main_frame_blur.setEnabled(True)
@@ -409,6 +504,8 @@ class AudioRecorder(QMainWindow):
             self.settings_label.invert_active_state()
 
     def about(self):
+        """This function takes care of the about dialog."""
+
         about_dialog = FramelessDialog(self, "Created by Hannan Khan", self.normal_bg, self.highlight_bg,
                                        self.normal_color, self.highlight_color, "About", self.current_font)
         linked_in_label = QtWidgets.QLabel()
@@ -432,6 +529,21 @@ class AudioRecorder(QMainWindow):
         self.showMinimized()
 
     def exit_app(self):
+        """This function will take care of possible User error while exiting, as one can only
+        save a file by pressing stop. It will also close the PyAudio object, join all remaining
+        possible threads, and finally exit."""
+
+        if self.recording or self.paused:
+            warning_dialog = FramelessDialog(self, "You must press stop in\norder to save your recording.",
+                                             self.normal_bg, self.highlight_bg, self.normal_color,self.highlight_color,
+                                             "Error", self.current_font)
+            if self.recording:
+                warning_dialog.message_label.setText("Recording in progress.\nPlease press Stop.")
+            self.main_frame_blur.setEnabled(True)
+            warning_dialog.exec_()
+            self.main_frame_blur.setEnabled(False)
+            return
+        self.p.terminate()
         for thread in self.threads:
             thread.join()
         sys.exit(0)

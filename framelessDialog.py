@@ -1,10 +1,34 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""This is a minimalist frameless QDialog."""
+
+__author__ = "Hannan Khan"
+__copyright__ = "Copyright 2020, Audio Recorder"
+__credits__ = ["Hannan Khan"]
+__license__ = "MIT"
+__version__ = "1.0"
+__maintainer__ = "Hannan Khan"
+__email__ = "hannankhan888@gmail.com"
+
 from PyQt5 import QtGui, QtWidgets, QtCore
 from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtCore import Qt
+
 from dynamicLabels import ColorChangingLabel, CustomButton
 
 
 class FramelessDialog(QtWidgets.QDialog):
+    """This class creates a QDialog with the windowFlag FramelessWindowHint enabled.
+    It implements a minimalist window frame. The ' '/' ' and the ' '_' ' in the window frame
+    can be replaced with any type of label (especially custom image labels) to represent
+    the close and minimize button better.
+    This class will have its own QDialog name in the window frame. It will also display
+    a message in the middle dialog. This dialog will open DEAD CENTER in the QMainWindow
+    that calls it.
+    This class comes with one button only, ' 'ok' '. Other buttons can be added after creation.
+    This class can be dragged around via the window frame, similar to the QMainWindow."""
+
     def __init__(self, master: QMainWindow = None, message: str = "", normal_bg: QtGui.QColor = None,
                  highlight_bg: QtGui.QColor = None, normal_color: QtGui.QColor = None,
                  highlight_color: QtGui.QColor = None, window_title: str = "", current_font: QtGui.QFont = None):
@@ -35,7 +59,6 @@ class FramelessDialog(QtWidgets.QDialog):
     def _init_window_frame(self):
         self.window_frame = QtWidgets.QFrame()
         self.window_frame_layout = QtWidgets.QHBoxLayout()
-        # self.window_frame_layout.setSpacing(60)
         self.window_frame_layout.setContentsMargins(0,0,0,0)
 
         self.window_frame_left = QtWidgets.QFrame()
