@@ -466,7 +466,7 @@ class AudioRecorder(QMainWindow):
                 self.pause_button_label.invert_active_state()
             self.recording = False
             self.paused = False
-            with wave.open(self.filename, "wb") as wf:
+            with wave.open(self.filepath, "wb") as wf:
                 wf.setnchannels(self.input_channels)
                 wf.setsampwidth(self.p.get_sample_size(SAMPLE_FORMAT))
                 wf.setframerate(FPS)
