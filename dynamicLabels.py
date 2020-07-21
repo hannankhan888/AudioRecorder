@@ -18,17 +18,6 @@ from PyQt5 import QtGui, QtWidgets, QtCore
 from PyQt5.QtCore import Qt
 
 
-# function needed to use pyinstaller properly:
-def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath('.')
-    return os.path.join(base_path, relative_path)
-
-
 class ColorChangingLabel(QtWidgets.QLabel):
     """This is a class for creating labels that will change color, based on mouse location.
 
@@ -139,8 +128,8 @@ class ImageChangingLabel(QtWidgets.QLabel):
         self.active = False
 
         self.func = func
-        self.img_1_pixmap = QtGui.QPixmap(resource_path(image_1)).scaled(resized_x, resized_y, Qt.KeepAspectRatio)
-        self.img_2_pixmap = QtGui.QPixmap(resource_path(image_2)).scaled(resized_x, resized_y, Qt.KeepAspectRatio)
+        self.img_1_pixmap = QtGui.QPixmap(image_1).scaled(resized_x, resized_y, Qt.KeepAspectRatio)
+        self.img_2_pixmap = QtGui.QPixmap(image_2).scaled(resized_x, resized_y, Qt.KeepAspectRatio)
         self.setPixmap(self.img_1_pixmap)
 
     def enterEvent(self, a0: QtCore.QEvent) -> None:

@@ -108,7 +108,6 @@ class AudioRecorder(QMainWindow):
 
         self._init_window_frame()
         self._init_bottom_frame()
-        self._init_popup_menu()
 
         self.main_frame.setLayout(self.main_frame_layout)
 
@@ -138,6 +137,12 @@ class AudioRecorder(QMainWindow):
 
     def contextMenuEvent(self, event: QtGui.QContextMenuEvent) -> None:
         if self.window_frame.underMouse():
+            self.pop_up_menu = QtWidgets.QMenu()
+            self.always_on_top_action = QtWidgets.QAction("&Always on top", self)
+            self.always_on_top_action.setCheckable(True)
+            self.always_on_top_action.setChecked(self.always_on_top)
+            self.always_on_top_action.triggered.connect(self.update_always_on_top)
+            self.pop_up_menu.addAction(self.always_on_top_action)
             self.pop_up_menu.exec_(self.mapToGlobal(event.pos()))
 
     def _init_colors(self):
@@ -284,14 +289,6 @@ class AudioRecorder(QMainWindow):
 
         self.bottom_frame.setLayout(self.bottom_frame_layout)
         self.main_frame_layout.addWidget(self.bottom_frame)
-
-    def _init_popup_menu(self):
-        self.pop_up_menu = QtWidgets.QMenu()
-        self.always_on_top_action = QtWidgets.QAction("&Always on top", self)
-        self.always_on_top_action.setCheckable(True)
-        self.always_on_top_action.setChecked(self.always_on_top)
-        self.always_on_top_action.triggered.connect(self.update_always_on_top)
-        self.pop_up_menu.addAction(self.always_on_top_action)
 
     def set_current_recording_text(self, text: str = "", recording: bool = False, paused: bool = False,
                                    stopped: bool = False):
@@ -482,11 +479,8 @@ class AudioRecorder(QMainWindow):
             self.filepath = ""
             self.filename = ""
             self.set_current_time_text(0)
-        print("Self.threads before closing", end="")
-        print(self.threads)
         for thread in self.threads:
             if thread.is_alive():
-                print("Closing: " + str(thread.getName()))
                 thread.join(.5)
         self.threads.clear()
 

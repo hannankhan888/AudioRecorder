@@ -56,6 +56,30 @@ class FramelessDialog(QtWidgets.QDialog):
         self._init_bottom_frame()
         self.setLayout(self.main_frame_layout)
 
+    def showEvent(self, a0: QtGui.QShowEvent) -> None:
+        top_left = self.master.window().frameGeometry().topLeft()
+        parent_center = self.master.window().rect().center()
+        self.move(top_left + parent_center - self.rect().center())
+        super(FramelessDialog, self).showEvent(a0)
+
+    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+        self.mousePressPos = None
+        self.mouseMovePos = None
+        if (a0.button() == QtCore.Qt.LeftButton) and self.window_frame.underMouse():
+            self.mousePressPos = a0.globalPos()
+            self.mouseMovePos = a0.globalPos()
+        super(FramelessDialog, self).mousePressEvent(a0)
+
+    def mouseMoveEvent(self, a0: QtGui.QMouseEvent) -> None:
+        if (a0.buttons() == QtCore.Qt.LeftButton) and (self.window_frame.underMouse()):
+            curr_pos = self.pos()
+            global_pos = a0.globalPos()
+            diff = global_pos - self.mouseMovePos
+            new_pos = curr_pos + diff
+            self.move(new_pos)
+            self.mouseMovePos = global_pos
+        super(FramelessDialog, self).mouseMoveEvent(a0)
+
     def _init_window_frame(self):
         self.window_frame = QtWidgets.QFrame()
         self.window_frame_layout = QtWidgets.QHBoxLayout()
@@ -128,12 +152,6 @@ class FramelessDialog(QtWidgets.QDialog):
         self.normal_color = normal_color
         self.highlight_color = highlight_color
 
-    def showEvent(self, a0: QtGui.QShowEvent) -> None:
-        top_left = self.master.window().frameGeometry().topLeft()
-        parent_center = self.master.window().rect().center()
-        self.move(top_left + parent_center - self.rect().center())
-        super(FramelessDialog, self).showEvent(a0)
-
     def get_style_sheet(self, for_frame: bool = False, for_dialog: bool = False) -> str:
         red = str(self.normal_bg.red())
         green = str(self.normal_bg.green())
@@ -152,24 +170,6 @@ class FramelessDialog(QtWidgets.QDialog):
                         border: 1px solid white;
                         }""" % rgb_portion
         return styleSheet
-
-    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
-        self.mousePressPos = None
-        self.mouseMovePos = None
-        if (a0.button() == QtCore.Qt.LeftButton) and self.window_frame.underMouse():
-            self.mousePressPos = a0.globalPos()
-            self.mouseMovePos = a0.globalPos()
-        super(FramelessDialog, self).mousePressEvent(a0)
-
-    def mouseMoveEvent(self, a0: QtGui.QMouseEvent) -> None:
-        if (a0.buttons() == QtCore.Qt.LeftButton) and (self.window_frame.underMouse()):
-            curr_pos = self.pos()
-            global_pos = a0.globalPos()
-            diff = global_pos - self.mouseMovePos
-            new_pos = curr_pos + diff
-            self.move(new_pos)
-            self.mouseMovePos = global_pos
-        super(FramelessDialog, self).mouseMoveEvent(a0)
 
     def exit_window(self):
         self.close()
