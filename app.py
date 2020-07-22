@@ -491,6 +491,8 @@ class AudioRecorder(QMainWindow):
         io_text = "Input:\n%s\nOutput:\n%s\n" % (self.input_device_name, self.output_device_name)
         settings_dialog = FramelessDialog(self, io_text, self.normal_bg, self.highlight_bg,
                                           self.normal_color, self.highlight_color, "Settings", self.current_font)
+        if self.always_on_top:
+            settings_dialog.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.main_frame_blur.setEnabled(True)
         result = settings_dialog.exec_()
         if result == 0:
@@ -502,22 +504,55 @@ class AudioRecorder(QMainWindow):
 
         about_dialog = FramelessDialog(self, "Created by Hannan Khan", self.normal_bg, self.highlight_bg,
                                        self.normal_color, self.highlight_color, "About", self.current_font)
+        if self.always_on_top:
+            about_dialog.setWindowFlag(Qt.WindowStaysOnTopHint)
         linked_in_label = QtWidgets.QLabel()
         linked_in_label.setFont(self.current_font)
         linked_in_label.setText('<a href="https://www.linkedin.com/in/hannankhan888/" style="color: rgba(187, 172, '
                                 '193, 255)">LinkedIn</a>')
         linked_in_label.setOpenExternalLinks(True)
+
         github_label = QtWidgets.QLabel()
         github_label.setFont(self.current_font)
         github_label.setText('<a href="https://github.com/hannankhan888" style="color: rgba(187, 172, 193, '
                              '255)">Github</a>')
         github_label.setOpenExternalLinks(True)
+
+        license_label = CustomButton(self.license_box)
+        license_label.set_all_colors(self.normal_bg, self.highlight_bg, self.normal_color, self.highlight_color)
+        license_label.setFont(self.current_font)
+        license_label.setText("License")
+        license_label.setCursor(Qt.PointingHandCursor)
+
         about_dialog.middle_frame_layout.addWidget(linked_in_label)
         about_dialog.middle_frame_layout.addWidget(github_label)
+        about_dialog.middle_frame_layout.addWidget(license_label)
         self.main_frame_blur.setEnabled(True)
         result = about_dialog.exec_()
         if result == 0:
             self.main_frame_blur.setEnabled(False)
+
+    def license_box(self):
+        """Creates a license dialog."""
+
+        license_text = ('MIT License\n\nCopyright (c) 2020 Hannan Khan\n\nPermission is hereby granted, '
+                        'free of charge, to any person obtaining a copy of this\nsoftware and associated '
+                        'documentation files (the \"Software\"), to deal in the Software\nwithout '
+                        'restriction, including without limitation the rights to use, copy, modify, '
+                        'merge,\npublish, distribute, sublicense, and/or sell copies of the Software, '
+                        'and to permit persons to\nwhom the Software is furnished to do so, subject to the '
+                        'following conditions:\nThe above copyright notice and this permission notice '
+                        'shall be included in all copies\nor substantial portions of the Software.\n\nTHE '
+                        'SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS\nOR'
+                        'IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\n'
+                        'FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL\nTHE '
+                        'AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\n'
+                        'LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM,'
+                        'OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE '
+                        'SOFTWARE.')
+        license_box = FramelessDialog(self, license_text, self.normal_bg, self.highlight_bg, self.normal_color,
+                                      self.highlight_color, "License", self.current_font)
+        license_box.exec_()
 
     def minimize_app(self):
         self.showMinimized()
@@ -529,7 +564,7 @@ class AudioRecorder(QMainWindow):
 
         if self.recording or self.paused:
             warning_dialog = FramelessDialog(self, "You must press stop in\norder to save your recording.",
-                                             self.normal_bg, self.highlight_bg, self.normal_color,self.highlight_color,
+                                             self.normal_bg, self.highlight_bg, self.normal_color, self.highlight_color,
                                              "Error", self.current_font)
             if self.recording:
                 warning_dialog.message_label.setText("Recording in progress.\nPlease press Stop.")
