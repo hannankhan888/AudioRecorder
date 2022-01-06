@@ -1,4 +1,5 @@
 # AudioRecorder
+![Screenshot](screenshots/screenshot_1.jpg)  
 This is a very basic audio recorder written in Python 3.7 using PyAudio and wave. The goal of this application was to implement threading seamlessly, as well as creating an application with a minimalist aspect.
 ## Installation
 If you would like to use AudioRecorder immediately, you can use the .exe file in the dist folder, on any Windows 10 machine.
